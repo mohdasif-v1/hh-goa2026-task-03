@@ -1,0 +1,11 @@
+{
+  "id": "subject_001",
+  "display_name": "Mohd Asif",
+  "gallery_dir": "data/gallery/subject_001",
+  "search_image_url": "https://github.com/mohdasif-v1.png",
+  "search_terms": [
+    "\"Mohd Asif\" GitHub",
+    "\"mohdasif-v1\" GitHub"
+  ],
+  "consent_note": "Self-enrolled by the builder; used for demo purposes only."
+}
