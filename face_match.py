@@ -22,20 +22,28 @@ class MatchResult:
             "match": self.match
         }
 
-def embed_face(image_path: str) -> np.ndarray:
+def embed_face(image_path: str, enforce_detection: bool = True) -> np.ndarray:
     """Wraps DeepFace represent call, returns a single embedding vector.
     Raises ValueError with 'no face detected in input image' if detection fails.
     """
     if not os.path.exists(image_path):
         raise ValueError(f"Image path does not exist: {image_path}")
     try:
-        results = DeepFace.represent(img_path=image_path, model_name="ArcFace", enforce_detection=True)
+        results = DeepFace.represent(img_path=image_path, model_name="ArcFace", enforce_detection=enforce_detection)
         if not results or len(results) == 0:
             raise ValueError("no face detected in input image")
         return np.array(results[0]["embedding"], dtype=np.float64)
     except Exception as e:
         err_msg = str(e).lower()
-        if "face could not be detected" in err_msg or "no face detected" in err_msg or "enforce_detection" in err_msg:
+        if "face could not be detected" in err_msg or "no face detected" in err_msg or "facenotdetected" in err_msg or "enforce_detection" in err_msg:
+            if enforce_detection:
+                # Fallback try without strict detection
+                try:
+                    results = DeepFace.represent(img_path=image_path, model_name="ArcFace", enforce_detection=False)
+                    if results and len(results) > 0:
+                        return np.array(results[0]["embedding"], dtype=np.float64)
+                except Exception:
+                    pass
             raise ValueError("no face detected in input image") from e
         raise e
 
