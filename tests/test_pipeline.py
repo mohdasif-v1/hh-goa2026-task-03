@@ -1,3 +1,4 @@
+import re
 import pytest
 from web3 import Web3
 
@@ -5,6 +6,7 @@ import config
 import fingerprint
 import chain
 import face_match
+import web_search
 
 def test_canonicalization_determinism():
     data1 = {"url": "https://example.com", "title": "Test Title", "snippet": "Test Snippet"}
@@ -44,7 +46,7 @@ def test_contract_abi_loading():
     assert hasattr(contract.functions, "registerHash")
     assert hasattr(contract.functions, "verifyHash")
 
-def test_on_chain_verify_hash_and_tampering():
+def test_on_chain_verify_hash_pattern_and_tampering():
     import time
     test_hash = fingerprint.fingerprint({"unit_test": "on_chain_registration_check", "ts": time.time()})
     # Verify before registration
@@ -52,7 +54,8 @@ def test_on_chain_verify_hash_and_tampering():
     
     # Register on-chain
     tx_hash, block_num = chain.register_hash(test_hash)
-    assert tx_hash.startswith("0x")
+    assert re.match(r"^0x[a-fA-F0-9]{64}$", tx_hash) is not None, f"Invalid tx_hash format: {tx_hash}"
+    assert tx_hash != "0xRegisteredOnChain"
     assert block_num > 0
     
     # Verify after registration
@@ -61,3 +64,33 @@ def test_on_chain_verify_hash_and_tampering():
     # Tampered hash check
     tampered_hash = fingerprint.fingerprint({"unit_test": "on_chain_registration_check", "ts": time.time() + 999})
     assert chain.verify_hash(tampered_hash) is False
+
+def test_search_candidate_identifier_verification_gate():
+    enrollment = {
+        "display_name": "Mohd Asif",
+        "search_terms": ["\"Mohd Asif\" GitHub"]
+    }
+    
+    # Candidate without enrolled identifier ("pandearun") -> REJECTED
+    unrelated_candidates = [{
+        "url": "https://www.linkedin.com/posts/pandearun_did-you-know-a-fax-machine",
+        "title": "Did you know a fax machine does not send documents; author pandearun",
+        "snippet": "LinkedIn post about fax machines",
+        "source": "LinkedIn"
+    }]
+    res_unrelated = web_search.select_best_result(unrelated_candidates, enrollment)
+    assert res_unrelated["verification_status"] == "NO_MATCH_FOUND"
+    assert "No enrolled identifier" in res_unrelated["verification_reason"]
+    assert res_unrelated["url"] == ""
+
+    # Candidate with enrolled identifier ("mohdasif-v1" or "Mohd Asif") -> ACCEPTED
+    valid_candidates = [{
+        "url": "https://github.com/mohdasif-v1/content-platform",
+        "title": "mohdasif-v1/content-platform",
+        "snippet": "Mohd Asif GitHub project",
+        "source": "GitHub"
+    }]
+    res_valid = web_search.select_best_result(valid_candidates, enrollment)
+    assert res_valid["verification_status"] == "VERIFIED"
+    assert "mohdasif-v1" in res_valid["verification_reason"].lower()
+    assert res_valid["url"] == "https://github.com/mohdasif-v1/content-platform"

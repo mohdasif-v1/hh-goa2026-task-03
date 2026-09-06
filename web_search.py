@@ -52,20 +52,31 @@ def run_search(query: dict) -> list[dict]:
     return results
 
 def select_best_result(results: list[dict], enrollment_record: dict) -> dict:
-    """Programmatic selection logic: selects result matching known identifiers.
-    Returns canonical search result structure per TRD Section 3.3.
-    Raises ValueError if zero results found.
+    """Selection logic with REQUIRED identifier verification gate.
+    Returns canonical search result structure per TRD Section 3.3 and candidate verification metadata.
     """
     if not results:
-        raise ValueError("Search API returned zero results")
+        return {
+            "url": "",
+            "title": "",
+            "snippet": "",
+            "platform": "N/A",
+            "verification_status": "NO_MATCH_FOUND",
+            "verification_reason": "Search API returned zero candidates",
+            "retrieved_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        }
 
-    target_identifiers = [
+    # Case-insensitive identifier list
+    raw_identifiers = [
         "mohdasif-v1",
-        enrollment_record.get("display_name", "").lower(),
+        enrollment_record.get("display_name", ""),
         "github.com/mohdasif-v1"
     ]
+    target_identifiers = [ident.lower() for ident in raw_identifiers if ident]
 
     selected = None
+    matched_identifier = None
+
     for res in results:
         res_url = (res.get("url") or "").lower()
         res_title = (res.get("title") or "").lower()
@@ -75,21 +86,41 @@ def select_best_result(results: list[dict], enrollment_record: dict) -> dict:
         text_to_check = f"{res_url} {res_title} {res_snippet} {res_source}"
 
         for ident in target_identifiers:
-            if ident and ident in text_to_check:
+            if ident in text_to_check:
                 selected = res
+                matched_identifier = ident
                 break
         if selected:
             break
 
-    # Default to first result if no explicit identifier match
-    if not selected:
-        selected = results[0]
-
     iso_timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    if not selected:
+        return {
+            "url": "",
+            "title": "",
+            "snippet": "",
+            "platform": "N/A",
+            "verification_status": "NO_MATCH_FOUND",
+            "verification_reason": f"No enrolled identifier ({', '.join(raw_identifiers)}) found in candidate results",
+            "retrieved_at": iso_timestamp
+        }
+
+    url_val = selected.get("url", "")
+    platform_name = "Web"
+    if "linkedin.com" in url_val.lower():
+        platform_name = "LinkedIn"
+    elif "github.com" in url_val.lower():
+        platform_name = "GitHub"
+    elif "x.com" in url_val.lower() or "twitter.com" in url_val.lower():
+        platform_name = "X / Twitter"
+
     return {
-        "url": selected.get("url", ""),
+        "url": url_val,
         "title": selected.get("title", ""),
         "snippet": selected.get("snippet", ""),
+        "platform": platform_name,
+        "verification_status": "VERIFIED",
+        "verification_reason": f"Matched enrolled identifier '{matched_identifier}' in candidate data",
         "retrieved_at": iso_timestamp
     }
