@@ -51,49 +51,53 @@ def run_search(query: dict) -> list[dict]:
             })
     return results
 
+def normalize_url(url: str) -> str:
+    """Normalizes URL for strict profile matching (removes protocol, www, trailing slashes, converts to lowercase)."""
+    if not url:
+        return ""
+    u = url.lower().strip()
+    for prefix in ["https://", "http://", "www."]:
+        if u.startswith(prefix):
+            u = u[len(prefix):]
+    return u.rstrip("/")
+
 def select_best_result(results: list[dict], enrollment_record: dict) -> dict:
-    """Selection logic with REQUIRED identifier verification gate.
-    Returns canonical search result structure per TRD Section 3.3 and candidate verification metadata.
+    """Selection logic with REQUIRED own profile URL verification gate.
+    A candidate is VERIFIED only if its normalized URL matches or is a subpath of an own_known_profiles entry.
+    Returns canonical search result structure and verification status metadata.
     """
+    iso_timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    own_profiles = enrollment_record.get("own_known_profiles", [])
+    normalized_profiles = [normalize_url(p) for p in own_profiles if p]
+
     if not results:
         return {
             "url": "",
             "title": "",
             "snippet": "",
             "platform": "N/A",
-            "verification_status": "NO_MATCH_FOUND",
+            "verification_status": "NO_VERIFIED_MATCH",
             "verification_reason": "Search API returned zero candidates",
-            "retrieved_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            "retrieved_at": iso_timestamp
         }
 
-    # Case-insensitive identifier list
-    raw_identifiers = [
-        "mohdasif-v1",
-        enrollment_record.get("display_name", ""),
-        "github.com/mohdasif-v1"
-    ]
-    target_identifiers = [ident.lower() for ident in raw_identifiers if ident]
-
     selected = None
-    matched_identifier = None
+    matched_profile = None
 
     for res in results:
-        res_url = (res.get("url") or "").lower()
-        res_title = (res.get("title") or "").lower()
-        res_snippet = (res.get("snippet") or "").lower()
-        res_source = (res.get("source") or "").lower()
+        cand_url_raw = res.get("url") or ""
+        cand_url_norm = normalize_url(cand_url_raw)
+        if not cand_url_norm:
+            continue
 
-        text_to_check = f"{res_url} {res_title} {res_snippet} {res_source}"
-
-        for ident in target_identifiers:
-            if ident in text_to_check:
+        for prof in normalized_profiles:
+            if cand_url_norm == prof or cand_url_norm.startswith(prof + "/"):
                 selected = res
-                matched_identifier = ident
+                matched_profile = prof
                 break
         if selected:
             break
-
-    iso_timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if not selected:
         return {
@@ -101,8 +105,8 @@ def select_best_result(results: list[dict], enrollment_record: dict) -> dict:
             "title": "",
             "snippet": "",
             "platform": "N/A",
-            "verification_status": "NO_MATCH_FOUND",
-            "verification_reason": f"No enrolled identifier ({', '.join(raw_identifiers)}) found in candidate results",
+            "verification_status": "NO_VERIFIED_MATCH",
+            "verification_reason": f"No candidate URL matched enrolled profile allowlist ({', '.join(own_profiles)})",
             "retrieved_at": iso_timestamp
         }
 
@@ -120,7 +124,7 @@ def select_best_result(results: list[dict], enrollment_record: dict) -> dict:
         "title": selected.get("title", ""),
         "snippet": selected.get("snippet", ""),
         "platform": platform_name,
-        "verification_status": "VERIFIED",
-        "verification_reason": f"Matched enrolled identifier '{matched_identifier}' in candidate data",
+        "verification_status": "VERIFIED (own profile URL match)",
+        "verification_reason": f"Candidate URL matches enrolled profile '{matched_profile}'",
         "retrieved_at": iso_timestamp
     }

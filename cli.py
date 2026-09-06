@@ -35,14 +35,15 @@ def print_step_2_search(candidate_count: int, selected_result: dict, engine_name
     print(f"      Engine      : {engine_name}")
     print(f"      Candidates  : {candidate_count}\n")
     
-    if selected_result.get("verification_status") == "VERIFIED":
+    status_str = selected_result.get("verification_status", "")
+    if status_str.startswith("VERIFIED"):
         print("      Candidate 1")
         print(f"      Platform    : {selected_result.get('platform', 'Web')}")
         print(f"      Title       : {selected_result.get('title')}")
         print(f"      URL         : {selected_result.get('url')}")
-        print(f"      Status      : VERIFIED MATCH ({selected_result.get('verification_reason')})\n")
+        print(f"      Status      : {status_str} ({selected_result.get('verification_reason')})\n")
     else:
-        print(f"      Status      : NO VERIFIED MATCH ({selected_result.get('verification_reason')})\n")
+        print(f"      Status      : {status_str} ({selected_result.get('verification_reason')})\n")
 
 def print_no_match_result():
     print("RESULT")

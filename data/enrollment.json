@@ -4,8 +4,12 @@
   "gallery_dir": "data/gallery/subject_001",
   "search_image_url": "https://github.com/mohdasif-v1.png",
   "search_terms": [
-    "\"Mohd Asif\" GitHub",
-    "\"mohdasif-v1\" GitHub"
+    "\"mohdasif-v1\" GitHub",
+    "\"Mohd Asif\" GitHub"
+  ],
+  "own_known_profiles": [
+    "github.com/mohdasif-v1",
+    "linkedin.com/in/mohdasif-v1"
   ],
   "consent_note": "Self-enrolled by the builder; used for demo purposes only."
 }

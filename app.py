@@ -70,8 +70,8 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool 
 
     selected_result = web_search.select_best_result(raw_results, enrollment)
     
-    # If primary search produced NO_MATCH_FOUND and we used Google Lens, try text search fallback
-    if selected_result.get("verification_status") != "VERIFIED" and query.get("engine") == "google_lens":
+    # If primary search produced NO_VERIFIED_MATCH and we used Google Lens, try text search fallback
+    if not selected_result.get("verification_status", "").startswith("VERIFIED") and query.get("engine") == "google_lens":
         fallback_query = {
             "engine": "google",
             "q": enrollment.get("search_terms", [""])[0],
@@ -80,7 +80,7 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool 
         try:
             fallback_results = web_search.run_search(fallback_query)
             fallback_selected = web_search.select_best_result(fallback_results, enrollment)
-            if fallback_selected.get("verification_status") == "VERIFIED":
+            if fallback_selected.get("verification_status", "").startswith("VERIFIED"):
                 raw_results = fallback_results
                 selected_result = fallback_selected
                 engine_label = "Google Search"
@@ -89,8 +89,8 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool 
 
     cli.print_step_2_search(len(raw_results), selected_result, engine_label)
 
-    # Stop pipeline if no candidate passed identifier verification gate
-    if selected_result.get("verification_status") != "VERIFIED":
+    # Stop pipeline if no candidate passed URL verification gate
+    if not selected_result.get("verification_status", "").startswith("VERIFIED"):
         cli.print_no_match_result()
         sys.exit(0)
 

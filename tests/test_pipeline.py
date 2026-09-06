@@ -65,25 +65,36 @@ def test_on_chain_verify_hash_pattern_and_tampering():
     tampered_hash = fingerprint.fingerprint({"unit_test": "on_chain_registration_check", "ts": time.time() + 999})
     assert chain.verify_hash(tampered_hash) is False
 
-def test_search_candidate_identifier_verification_gate():
+def test_search_candidate_own_profile_url_verification_gate():
     enrollment = {
         "display_name": "Mohd Asif",
-        "search_terms": ["\"Mohd Asif\" GitHub"]
+        "own_known_profiles": [
+            "github.com/mohdasif-v1",
+            "linkedin.com/in/mohdasif-v1"
+        ]
     }
     
-    # Candidate without enrolled identifier ("pandearun") -> REJECTED
-    unrelated_candidates = [{
-        "url": "https://www.linkedin.com/posts/pandearun_did-you-know-a-fax-machine",
-        "title": "Did you know a fax machine does not send documents; author pandearun",
-        "snippet": "LinkedIn post about fax machines",
-        "source": "LinkedIn"
-    }]
+    # Candidate URL NOT matching profile allowlist (even if title contains "AsifScripts" / "Mohd Asif") -> REJECTED
+    unrelated_candidates = [
+        {
+            "url": "https://www.linkedin.com/posts/pandearun_did-you-know-a-fax-machine",
+            "title": "Did you know a fax machine does not send documents; author pandearun",
+            "snippet": "LinkedIn post about fax machines",
+            "source": "LinkedIn"
+        },
+        {
+            "url": "https://github.com/AsifScripts",
+            "title": "Mohd Asif AsifScripts",
+            "snippet": "Hi, I'm Mohd Asif – Cloud Enthusiast & Full-Stack Developer",
+            "source": "GitHub"
+        }
+    ]
     res_unrelated = web_search.select_best_result(unrelated_candidates, enrollment)
-    assert res_unrelated["verification_status"] == "NO_MATCH_FOUND"
-    assert "No enrolled identifier" in res_unrelated["verification_reason"]
+    assert res_unrelated["verification_status"] == "NO_VERIFIED_MATCH"
+    assert "No candidate URL matched enrolled profile allowlist" in res_unrelated["verification_reason"]
     assert res_unrelated["url"] == ""
 
-    # Candidate with enrolled identifier ("mohdasif-v1" or "Mohd Asif") -> ACCEPTED
+    # Candidate URL matching own_known_profiles entry -> ACCEPTED
     valid_candidates = [{
         "url": "https://github.com/mohdasif-v1/content-platform",
         "title": "mohdasif-v1/content-platform",
@@ -91,6 +102,6 @@ def test_search_candidate_identifier_verification_gate():
         "source": "GitHub"
     }]
     res_valid = web_search.select_best_result(valid_candidates, enrollment)
-    assert res_valid["verification_status"] == "VERIFIED"
-    assert "mohdasif-v1" in res_valid["verification_reason"].lower()
+    assert res_valid["verification_status"].startswith("VERIFIED")
+    assert "github.com/mohdasif-v1" in res_valid["verification_reason"]
     assert res_valid["url"] == "https://github.com/mohdasif-v1/content-platform"
