@@ -65,43 +65,53 @@ def test_on_chain_verify_hash_pattern_and_tampering():
     tampered_hash = fingerprint.fingerprint({"unit_test": "on_chain_registration_check", "ts": time.time() + 999})
     assert chain.verify_hash(tampered_hash) is False
 
-def test_search_candidate_own_profile_url_verification_gate():
+def test_web_content_face_verification_rules(monkeypatch):
     enrollment = {
         "display_name": "Mohd Asif",
-        "own_known_profiles": [
-            "github.com/mohdasif-v1",
-            "linkedin.com/in/mohdasif-v1"
-        ]
+        "own_known_profiles": ["github.com/mohdasif-v1"]
     }
-    
-    # Candidate URL NOT matching profile allowlist (even if title contains "AsifScripts" / "Mohd Asif") -> REJECTED
-    unrelated_candidates = [
-        {
-            "url": "https://www.linkedin.com/posts/pandearun_did-you-know-a-fax-machine",
-            "title": "Did you know a fax machine does not send documents; author pandearun",
-            "snippet": "LinkedIn post about fax machines",
-            "source": "LinkedIn"
-        },
-        {
-            "url": "https://github.com/AsifScripts",
-            "title": "Mohd Asif AsifScripts",
-            "snippet": "Hi, I'm Mohd Asif – Cloud Enthusiast & Full-Stack Developer",
-            "source": "GitHub"
-        }
-    ]
-    res_unrelated = web_search.select_best_result(unrelated_candidates, enrollment)
-    assert res_unrelated["verification_status"] == "NO_VERIFIED_MATCH"
-    assert "No candidate URL matched enrolled profile allowlist" in res_unrelated["verification_reason"]
+    dummy_gallery = {"subject_001": []}
+
+    # 1. Unrelated LinkedIn result without matching face -> REJECTED / UNVERIFIED
+    unrelated_candidates = [{
+        "url": "https://www.linkedin.com/posts/pandearun_did-you-know-a-fax-machine",
+        "title": "Did you know a fax machine",
+        "snippet": "LinkedIn post",
+        "image_url": "https://example.com/unrelated.jpg"
+    }]
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.15))
+    res_unrelated = web_search.select_best_result(unrelated_candidates, enrollment, dummy_gallery)
+    assert res_unrelated["verification_status"].startswith("REJECTED") or res_unrelated["verification_status"].startswith("UNVERIFIED")
     assert res_unrelated["url"] == ""
 
-    # Candidate URL matching own_known_profiles entry -> ACCEPTED
+    # 2. Own profile URL but no candidate face/image -> UNVERIFIED
+    no_img_candidates = [{
+        "url": "https://github.com/mohdasif-v1/content-platform",
+        "title": "mohdasif-v1/content-platform",
+        "snippet": "Project repo",
+        "image_url": None
+    }]
+    res_no_img = web_search.select_best_result(no_img_candidates, enrollment, dummy_gallery)
+    assert "UNVERIFIED" in res_no_img["verification_status"]
+    assert res_no_img["ownership_match"] is True
+    assert res_no_img["url"] == ""
+
+    # 3. Candidate with verified matching face -> VERIFIED
     valid_candidates = [{
         "url": "https://github.com/mohdasif-v1/content-platform",
         "title": "mohdasif-v1/content-platform",
         "snippet": "Mohd Asif GitHub project",
-        "source": "GitHub"
+        "image_url": "https://github.com/mohdasif-v1.png"
     }]
-    res_valid = web_search.select_best_result(valid_candidates, enrollment)
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (True, 0.95))
+    res_valid = web_search.select_best_result(valid_candidates, enrollment, dummy_gallery)
     assert res_valid["verification_status"].startswith("VERIFIED")
-    assert "github.com/mohdasif-v1" in res_valid["verification_reason"]
+    assert res_valid["face_match_score"] == 0.95
+    assert res_valid["ownership_match"] is True
     assert res_valid["url"] == "https://github.com/mohdasif-v1/content-platform"
+
+    # 4. Unrelated candidate on an owned profile without face match -> REJECTED
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.10))
+    res_owned_unrelated = web_search.select_best_result(valid_candidates, enrollment, dummy_gallery)
+    assert res_owned_unrelated["verification_status"].startswith("REJECTED")
+    assert res_owned_unrelated["url"] == ""

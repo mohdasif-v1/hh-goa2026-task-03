@@ -35,13 +35,14 @@ def print_step_2_search(candidate_count: int, selected_result: dict, engine_name
     print(f"      Engine      : {engine_name}")
     print(f"      Candidates  : {candidate_count}\n")
     
-    status_str = selected_result.get("verification_status", "")
+    status_str = selected_result.get("verification_status", "UNVERIFIED")
     if status_str.startswith("VERIFIED"):
         print("      Candidate 1")
-        print(f"      Platform    : {selected_result.get('platform', 'Web')}")
-        print(f"      Title       : {selected_result.get('title')}")
-        print(f"      URL         : {selected_result.get('url')}")
-        print(f"      Status      : {status_str} ({selected_result.get('verification_reason')})\n")
+        print(f"      Platform    : {selected_result.get('candidate_platform', 'Web')}")
+        print(f"      Title       : {selected_result.get('candidate_title')}")
+        print(f"      URL         : {selected_result.get('candidate_url')}")
+        print(f"      Face score  : {selected_result.get('face_match_score', 0.0):.3f}")
+        print(f"      Status      : {status_str}\n")
     else:
         print(f"      Status      : {status_str} ({selected_result.get('verification_reason')})\n")
 
