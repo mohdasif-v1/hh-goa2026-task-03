@@ -6,10 +6,29 @@ This project implements an end-to-end, live cryptographic content verification p
 
 ---
 
+## Design Note: Contract-Based Verification
+- **Original Architecture**: The technical specifications initially considered a raw-transaction data field payload to eliminate contract deployment complexity under a 1-day sprint constraint.
+- **Contract Upgrade**: Once the core pipeline was established, a custom [`ContentRegistry.sol`](file:///home/asifcodeverse/Projects/hh-goa-blockchain/contracts/ContentRegistry.sol) smart contract (`0x8e3034CAc8D8b2dFEfD49Efc06787C08fa7eAB7D` on Polygon Amoy testnet, Chain ID `80002`) was deployed.
+- **Rationale**: Utilizing a dedicated contract provides clean, standard EVM interfaces (`registerHash(bytes32)` and `verifyHash(bytes32)` view functions), persistent mapping records on-chain (`mapping(bytes32 => uint256)`), and structured `HashRegistered` events, strengthening the technical proof of verification. Both the deployment transaction (`0xc2b628...`) and on-chain registration transaction (`0x0ba6f5...`) are logged and verifiably stored on Polygon Amoy.
+
+---
+
 ## Ethical Scope & Guardrails (binding constraints)
 - **Consented Gallery Only**: The face gallery contains only self-enrolled photos of the consented builder (`data/gallery/subject_001`). No code path identifies unconsented third parties.
 - **Pre-Approved Web Anchor**: Web search resolves content the builder published themselves (`search_image_url`, `search_terms` in `data/enrollment.json`).
 - **Privacy-Preserving On-Chain Footprint**: Only a 32-byte cryptographic SHA-256 hash touches the public blockchain; no raw personal data or images are exposed on-chain.
+
+---
+
+## Task 3 Requirement → Implementation Traceability
+
+| Task Requirement | Implementation Module & Details | Status |
+|---|---|---|
+| **1. Face Identification** | [`face_match.py`](file:///home/asifcodeverse/Projects/hh-goa-blockchain/face_match.py) (DeepFace ArcFace model, 512-d embeddings, cosine similarity matching against `data/gallery/subject_001/`) | **PASS** |
+| **2. Social Media / Web Search (Face-driven, Genuine)** | [`web_search.py`](file:///home/asifcodeverse/Projects/hh-goa-blockchain/web_search.py) + [`data/enrollment.json`](file:///home/asifcodeverse/Projects/hh-goa-blockchain/data/enrollment.json) — Enrolled subject's actual image URL is sent directly to SerpApi's `google_lens` engine at runtime for real-time reverse image discovery | **PASS** |
+| **3. Blockchain Verification** | [`chain.py`](file:///home/asifcodeverse/Projects/hh-goa-blockchain/chain.py) + [`contracts/ContentRegistry.sol`](file:///home/asifcodeverse/Projects/hh-goa-blockchain/contracts/ContentRegistry.sol) — `registerHash()` and `verifyHash()` executed on Polygon Amoy testnet (Chain ID `80002`, Contract `0x8e3034CAc8D8b2dFEfD49Efc06787C08fa7eAB7D`) | **PASS** |
+| **4. No Website Required** | Pure CLI application (`app.py`, `cli.py`) with rich terminal output | **PASS** |
+| **5. GitHub Repo & Documentation** | Public repository with code, `.env.example`, automated tests, and complete documentation | **PASS** |
 
 ---
 
@@ -107,12 +126,6 @@ Execute the automated unit and integration tests:
 ```bash
 PYTHONPATH=. ./venv/bin/pytest tests/test_pipeline.py
 ```
-
----
-
-## Why Polygon Amoy & Smart Contract Architecture
-- **Public Credibility**: Transactions land on Polygon Amoy testnet (`80002`) and can be verified by any third party on [PolygonScan](https://amoy.polygonscan.com/).
-- **Smart Contract Storage**: Unlike raw transaction data fields, `ContentRegistry.sol` maintains a persistent `records` mapping (`bytes32 => uint256`), emitting `HashRegistered` events and exposing a view function `verifyHash(bytes32)`.
 
 ---
 
