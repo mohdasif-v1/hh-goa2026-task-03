@@ -9,20 +9,21 @@ def connect_to_polygon() -> Web3:
         config.RPC_URL,
         "https://rpc-amoy.polygon.technology",
         "https://polygon-amoy.drpc.org",
+        "https://polygon-amoy-bor-rpc.publicnode.com",
         "https://rpc.ankr.com/polygon_amoy",
-        "https://polygon-amoy.blockpi.network/v1/rpc/public",
-        "https://amoy.polygonscan.com"
+        "https://polygon-amoy.blockpi.network/v1/rpc/public"
     ]
     for ep in endpoints:
         if not ep or not ep.startswith("http"):
             continue
         try:
-            w3 = Web3(Web3.HTTPProvider(ep, request_kwargs={"timeout": 10}))
+            w3 = Web3(Web3.HTTPProvider(ep, request_kwargs={"timeout": 8}))
             if w3.is_connected():
                 return w3
         except Exception:
             continue
     raise RuntimeError(f"Failed to connect to Polygon Amoy RPC endpoints")
+
 
 
 def load_contract(w3: Web3 = None):

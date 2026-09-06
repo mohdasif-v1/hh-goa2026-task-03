@@ -14,7 +14,7 @@ import web_search
 import fingerprint
 import chain
 
-def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool = False):
+def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool = False, search_image_url: str = None, search_only: bool = False):
     cli.print_header(verbose)
 
     if not os.path.exists(input_image):
@@ -38,7 +38,7 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool 
         print("Face verification failed. Aborting pipeline.\n")
         sys.exit(1)
 
-    # 2. Web Search
+    # 2. Web Search & Candidate Extraction
     enrollment_path = os.path.join("data", "enrollment.json")
     if not os.path.exists(enrollment_path):
         print("Error: Enrollment record data/enrollment.json not found.")
@@ -47,12 +47,16 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool 
     with open(enrollment_path, "r") as f:
         enrollment = json.load(f)
 
-    # Primary query
+    # Override search anchor image if specified via CLI argument
+    if search_image_url:
+        enrollment["search_image_url"] = search_image_url
+
+    # Build primary search query
     query = web_search.build_query(enrollment)
     engine_label = "Google Lens" if query.get("engine") == "google_lens" else "Google Search"
     
     try:
-        raw_results = web_search.run_search(query)
+        raw_results = web_search.run_search(query, enrollment_record=enrollment)
     except Exception as e:
         if verbose:
             print(f"Primary search failed ({e}). Trying fallback terms...")
@@ -63,29 +67,78 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool 
         }
         engine_label = "Google Search (Fallback)"
         try:
-            raw_results = web_search.run_search(query)
+            raw_results = web_search.run_search(query, enrollment_record=enrollment)
         except Exception as e2:
             print(f"Search API Error: {e2}")
             sys.exit(1)
 
-    selected_result = web_search.select_best_result(raw_results, enrollment)
-    
-    # If primary search produced NO_VERIFIED_MATCH and we used Google Lens, try text search fallback
-    if not selected_result.get("verification_status", "").startswith("VERIFIED") and query.get("engine") == "google_lens":
-        fallback_query = {
-            "engine": "google",
-            "q": enrollment.get("search_terms", [""])[0],
-            "api_key": config.SERPAPI_KEY
-        }
-        try:
-            fallback_results = web_search.run_search(fallback_query)
-            fallback_selected = web_search.select_best_result(fallback_results, enrollment)
-            if fallback_selected.get("verification_status", "").startswith("VERIFIED"):
-                raw_results = fallback_results
-                selected_result = fallback_selected
-                engine_label = "Google Search"
-        except Exception:
-            pass
+    # Diagnostic tallying for search-only mode or verbose logging
+    linkedin_posts = 0
+    instagram_posts = 0
+    x_posts = 0
+    images_tested = 0
+    highest_score = 0.0
+    highest_cand = None
+    verified_matches = []
+
+    for res in raw_results:
+        ctype = res.get("candidate_type")
+        if ctype == "linkedin_post":
+            linkedin_posts += 1
+        elif ctype == "instagram_post":
+            instagram_posts += 1
+        elif ctype == "x_post":
+            x_posts += 1
+
+        all_imgs = res.get("all_image_urls") or ([res.get("image_url")] if res.get("image_url") else [])
+        if ctype in ["linkedin_post", "instagram_post", "x_post", "other_social"]:
+            for img_u in all_imgs:
+                if not img_u:
+                    continue
+                images_tested += 1
+                is_match, score, count, sdet = web_search.verify_candidate_face(img_u, gallery)
+                if score > highest_score:
+                    highest_score = score
+                    highest_cand = res
+                if is_match:
+                    verified_matches.append({
+                        "platform": res.get("candidate_platform"),
+                        "url": res.get("url"),
+                        "image_url": img_u,
+                        "score": score,
+                        "status": "VERIFIED SOCIAL MEDIA FACE MATCH"
+                    })
+
+    selected_result = web_search.select_best_result(raw_results, enrollment, gallery)
+
+    # If --search-only flag is set, output diagnostic report and exit safely without writing to blockchain
+    if search_only:
+        print("\nSearch-Only Diagnostic Report")
+        print("----------------------------")
+        print(f"Search anchor          : {enrollment.get('search_image_url', 'N/A')}")
+        print(f"Google Lens candidates : {len(raw_results)}")
+        print(f"LinkedIn post candidates: {linkedin_posts}")
+        print(f"Instagram post candidates: {instagram_posts}")
+        print(f"X post candidates      : {x_posts}")
+        print(f"Candidate images tested : {images_tested}")
+        print(f"Highest face-match score: {highest_score:.3f}")
+        print(f"Verified social matches : {len(verified_matches)}")
+
+        if verified_matches:
+            v = verified_matches[0]
+            print("\nVerified Candidate Match")
+            print("------------------------")
+            print(f"Platform            : {v['platform']}")
+            print(f"Post URL            : {v['url']}")
+            print(f"Candidate Image URL : {v['image_url']}")
+            print(f"Face Similarity     : {v['score']:.3f}")
+            print(f"Verification Status : {v['status']}")
+        else:
+            print("\nRESULT")
+            print("------")
+            print("NO VERIFIED SOCIAL MEDIA MATCH FOUND")
+        print("\nSearch-only mode complete. Blockchain registration skipped.\n")
+        return
 
     cli.print_step_2_search(len(raw_results), selected_result, engine_label)
 
@@ -161,11 +214,14 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False, verbose: bool 
 def main():
     parser = argparse.ArgumentParser(description="FaceChain Verifier CLI")
     parser.add_argument("--input", default="data/gallery/subject_001/photo1.jpg", help="Path to input face image")
+    parser.add_argument("--search-image-url", help="Override public search anchor image URL for reverse search")
+    parser.add_argument("--search-only", action="store_true", help="Run search & face verification diagnostic only without writing to blockchain")
     parser.add_argument("--tamper-test", action="store_true", help="Run tamper-detection verification demo beat")
     parser.add_argument("--verbose", action="store_true", help="Show additional diagnostic logging")
     args = parser.parse_args()
 
-    run_pipeline(args.input, args.tamper_test, args.verbose)
+    run_pipeline(args.input, args.tamper_test, args.verbose, args.search_image_url, args.search_only)
 
 if __name__ == "__main__":
     main()
+

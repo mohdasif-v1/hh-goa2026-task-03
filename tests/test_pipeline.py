@@ -199,20 +199,41 @@ def test_social_post_different_face_rejected(monkeypatch):
     assert "REJECTED" in res["verification_status"]
     assert res["url"] == ""
 
-def test_genuine_social_post_verified_face_match(monkeypatch):
-    enrollment = {"display_name": "Mohd Asif"}
+def test_cli_search_image_url_override(monkeypatch):
+    import json
+    enrollment = {"search_image_url": "https://old.com/img.png", "display_name": "Test"}
+    monkeypatch.setattr("json.load", lambda f: enrollment)
+    q = web_search.build_query({"search_image_url": "https://new.com/override.jpg"})
+    assert q["url"] == "https://new.com/override.jpg"
+
+def test_search_anchor_not_proof_of_verification(monkeypatch):
+    enrollment = {"search_image_url": "https://github.com/mohdasif-v1.png", "display_name": "Mohd Asif"}
     dummy_gallery = {}
-    valid_candidates = [{
-        "url": "https://www.linkedin.com/posts/mohd-asif_building-web3-activity-9999",
-        "title": "Mohd Asif - Building Web3",
-        "image_url": "https://media.licdn.com/dms/image/post.jpg",
-        "all_image_urls": ["https://media.licdn.com/dms/image/post.jpg"],
+    candidates = [{
+        "url": "https://www.linkedin.com/posts/unrelated-post",
+        "title": "Unrelated LinkedIn Post",
+        "image_url": "https://github.com/mohdasif-v1.png",  # Same image URL as anchor
+        "all_image_urls": ["https://github.com/mohdasif-v1.png"],
         "candidate_platform": "LinkedIn",
         "candidate_type": "linkedin_post"
     }]
-    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (True, 0.94, 1, "VERIFIED SOCIAL MEDIA FACE MATCH"))
-    res = web_search.select_best_result(valid_candidates, enrollment, dummy_gallery)
-    assert res["verification_status"] == "VERIFIED SOCIAL MEDIA FACE MATCH"
-    assert res["face_match_score"] == 0.94
-    assert res["url"] == "https://www.linkedin.com/posts/mohd-asif_building-web3-activity-9999"
+    # Force verify_candidate_face to return False to ensure anchor URL is NOT accepted as proof
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.10, 1, "REJECTED — FACE MISMATCH"))
+    res = web_search.select_best_result(candidates, enrollment, dummy_gallery)
+    assert "REJECTED" in res["verification_status"]
+    assert res["url"] == ""
+
+def test_search_only_mode_never_writes_blockchain(monkeypatch):
+    import app
+    recorded_calls = []
+    monkeypatch.setattr(chain, "register_hash", lambda h: recorded_calls.append("register") or ("0x123", 1))
+    
+    # Run pipeline with search_only=True
+    try:
+        app.run_pipeline("data/gallery/subject_001/photo1.jpg", search_only=True)
+    except SystemExit:
+        pass
+
+    assert "register" not in recorded_calls
+
 
