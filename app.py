@@ -76,15 +76,16 @@ def run_pipeline(input_image: str, run_tamper_test: bool = False):
     try:
         tx_hash, block_num = chain.register_hash(sha256_hash)
     except Exception as e:
-        if "already registered" in str(e).lower():
-            cli.console.print(f"  [yellow]Notice: Hash {sha256_hash[:10]}... already registered on-chain.[/yellow]")
-            # Fetch existing block or tx if needed, or query verifyHash directly
-            w3 = chain.connect_to_polygon()
-            contract = chain.load_contract(w3)
-            bytes32_hash = chain.hex_to_bytes32(sha256_hash)
-            verified = contract.functions.verifyHash(bytes32_hash).call()
-            tx_hash = "0xAlreadyRegisteredOnChain"
-            block_num = w3.eth.block_number
+        err_msg = str(e).lower()
+        if "already registered" in err_msg or "reverted" in err_msg:
+            # Query on-chain verify_hash to check if it's already registered
+            if chain.verify_hash(sha256_hash):
+                w3 = chain.connect_to_polygon()
+                tx_hash = "0xRegisteredOnChain"
+                block_num = w3.eth.block_number
+            else:
+                cli.console.print(f"[bold red]Blockchain Error: {e}[/bold red]")
+                sys.exit(1)
         else:
             cli.console.print(f"[bold red]Blockchain Error: {e}[/bold red]")
             sys.exit(1)

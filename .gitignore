@@ -5,3 +5,6 @@ venv/
 .venv/
 output/
 .DS_Store
+01_PRD.md
+02_TRD.md  
+03_Implementation_Plan.md
