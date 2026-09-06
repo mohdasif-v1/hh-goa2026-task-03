@@ -16,7 +16,7 @@ def print_header(verbose: bool = False):
     print("------------------\n")
 
 def print_step_1_face(match_result: dict, image_path: str):
-    print("[1/5] Face verification")
+    print("[1/5] Face identification")
     print(f"      Input       : {image_path}")
     if match_result.get("match"):
         print("      Face        : Detected")
@@ -31,7 +31,7 @@ def print_step_1_face(match_result: dict, image_path: str):
         print("      Status      : NO MATCH\n")
 
 def print_step_2_search(candidate_count: int, selected_result: dict, engine_name: str):
-    print("[2/5] Web search")
+    print("[2/5] Reverse image search")
     print(f"      Engine      : {engine_name}")
     print(f"      Candidates  : {candidate_count}\n")
     
@@ -39,17 +39,19 @@ def print_step_2_search(candidate_count: int, selected_result: dict, engine_name
     if status_str.startswith("VERIFIED"):
         print("      Candidate 1")
         print(f"      Platform    : {selected_result.get('candidate_platform', 'Web')}")
+        print(f"      Type        : {selected_result.get('candidate_type', 'Post')}")
         print(f"      Title       : {selected_result.get('candidate_title')}")
         print(f"      URL         : {selected_result.get('candidate_url')}")
         print(f"      Face score  : {selected_result.get('face_match_score', 0.0):.3f}")
         print(f"      Status      : {status_str}\n")
     else:
+        print(f"      Verified    : 0")
         print(f"      Status      : {status_str} ({selected_result.get('verification_reason')})\n")
 
 def print_no_match_result():
     print("RESULT")
     print("------")
-    print("No verified social-media match was found.")
+    print("NO VERIFIED SOCIAL MEDIA MATCH FOUND\n")
     print("Blockchain registration skipped.\n")
 
 def print_step_3_fingerprint(sha256_hash: str):
@@ -87,7 +89,7 @@ def print_tamper_demo(original_hash: str, original_verified: bool, tampered_hash
     print(f"Original     : {original_hash}")
     print(f"On-chain     : {'VERIFIED' if original_verified else 'NOT FOUND'}\n")
     print(f"Modified     : {tampered_hash}")
-    print(f"On-chain     : {'VERIFIED' if tampered_verified else 'NOT FOUND'}\n")
+    print(f"On-chain     : {'NOT FOUND' if not tampered_verified else 'VERIFIED'}\n")
     
     print("RESULT")
     print("------")
