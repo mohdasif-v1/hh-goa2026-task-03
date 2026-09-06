@@ -68,11 +68,26 @@ def test_url_classification():
     p2, t2 = web_search.classify_social_url("https://www.instagram.com/p/C-12345/")
     assert p2 == "Instagram" and t2 == "instagram_post"
 
+    p2b, t2b = web_search.classify_social_url("https://www.instagram.com/reel/C-98765/")
+    assert p2b == "Instagram" and t2b == "instagram_post"
+
     p3, t3 = web_search.classify_social_url("https://x.com/user/status/987654321")
     assert p3 == "X / Twitter" and t3 == "x_post"
 
+    p3b, t3b = web_search.classify_social_url("https://twitter.com/user/status/987654321")
+    assert p3b == "X / Twitter" and t3b == "x_post"
+
     p4, t4 = web_search.classify_social_url("https://www.linkedin.com/in/username")
     assert t4 == "profile"
+
+    p5, t5 = web_search.classify_social_url("https://example.com/some-page")
+    assert t5 == "generic_webpage"
+
+def test_candidate_image_download_and_face_detection(monkeypatch):
+    gallery = {}
+    is_match, score, count, status = web_search.verify_candidate_face("https://invalid-url-12345.com/image.jpg", gallery)
+    assert is_match is False
+    assert status == "UNVERIFIED — CANDIDATE IMAGE UNAVAILABLE"
 
 def test_unrelated_linkedin_post_rejected(monkeypatch):
     enrollment = {"display_name": "Mohd Asif"}
@@ -81,10 +96,11 @@ def test_unrelated_linkedin_post_rejected(monkeypatch):
         "url": "https://www.linkedin.com/posts/pandearun_did-you-know-a-fax-machine",
         "title": "Unrelated Post",
         "image_url": "https://example.com/fax.jpg",
+        "all_image_urls": ["https://example.com/fax.jpg"],
         "candidate_platform": "LinkedIn",
         "candidate_type": "linkedin_post"
     }]
-    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.15))
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.15, 1, "REJECTED — FACE MISMATCH"))
     res = web_search.select_best_result(unrelated_candidates, enrollment, dummy_gallery)
     assert "REJECTED" in res["verification_status"] or "UNVERIFIED" in res["verification_status"]
     assert res["url"] == ""
@@ -96,10 +112,11 @@ def test_unrelated_instagram_post_rejected(monkeypatch):
         "url": "https://www.instagram.com/p/Db-sY20tXy2/",
         "title": "Unrelated Instagram Reel",
         "image_url": "https://example.com/ig.jpg",
+        "all_image_urls": ["https://example.com/ig.jpg"],
         "candidate_platform": "Instagram",
         "candidate_type": "instagram_post"
     }]
-    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.10))
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.10, 1, "REJECTED — FACE MISMATCH"))
     res = web_search.select_best_result(candidates, enrollment, dummy_gallery)
     assert "REJECTED" in res["verification_status"] or "UNVERIFIED" in res["verification_status"]
     assert res["url"] == ""
@@ -111,10 +128,11 @@ def test_unrelated_x_post_rejected(monkeypatch):
         "url": "https://x.com/someone/status/123456789",
         "title": "Unrelated X Post",
         "image_url": "https://example.com/x.jpg",
+        "all_image_urls": ["https://example.com/x.jpg"],
         "candidate_platform": "X / Twitter",
         "candidate_type": "x_post"
     }]
-    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.12))
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.12, 1, "REJECTED — FACE MISMATCH"))
     res = web_search.select_best_result(candidates, enrollment, dummy_gallery)
     assert "REJECTED" in res["verification_status"] or "UNVERIFIED" in res["verification_status"]
     assert res["url"] == ""
@@ -126,6 +144,7 @@ def test_own_profile_url_not_a_post_rejected():
         "url": "https://github.com/mohdasif-v1",
         "title": "Mohd Asif Profile",
         "image_url": "https://github.com/mohdasif-v1.png",
+        "all_image_urls": ["https://github.com/mohdasif-v1.png"],
         "candidate_platform": "GitHub",
         "candidate_type": "profile"
     }]
@@ -140,10 +159,11 @@ def test_generic_website_rejected_for_social_post_requirement(monkeypatch):
         "url": "https://bazilhassan.com/",
         "title": "Bazil Hassan Portfolio",
         "image_url": "https://bazilhassan.com/me.jpg",
+        "all_image_urls": ["https://bazilhassan.com/me.jpg"],
         "candidate_platform": "Web",
         "candidate_type": "generic_webpage"
     }]
-    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (True, 0.98))
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (True, 0.98, 1, "VERIFIED SOCIAL MEDIA FACE MATCH"))
     res = web_search.select_best_result(web_candidates, enrollment, dummy_gallery)
     assert "REJECTED" in res["verification_status"]
     assert res["url"] == ""
@@ -155,6 +175,7 @@ def test_social_post_no_image_unverified():
         "url": "https://www.linkedin.com/posts/mohd-asif_activity-12345",
         "title": "Mohd Asif LinkedIn Post",
         "image_url": None,
+        "all_image_urls": [],
         "candidate_platform": "LinkedIn",
         "candidate_type": "linkedin_post"
     }]
@@ -169,10 +190,11 @@ def test_social_post_different_face_rejected(monkeypatch):
         "url": "https://www.linkedin.com/posts/other_person_post",
         "title": "Other Person Post",
         "image_url": "https://example.com/other.jpg",
+        "all_image_urls": ["https://example.com/other.jpg"],
         "candidate_platform": "LinkedIn",
         "candidate_type": "linkedin_post"
     }]
-    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.20))
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (False, 0.20, 1, "REJECTED — FACE MISMATCH"))
     res = web_search.select_best_result(candidates, enrollment, dummy_gallery)
     assert "REJECTED" in res["verification_status"]
     assert res["url"] == ""
@@ -184,11 +206,13 @@ def test_genuine_social_post_verified_face_match(monkeypatch):
         "url": "https://www.linkedin.com/posts/mohd-asif_building-web3-activity-9999",
         "title": "Mohd Asif - Building Web3",
         "image_url": "https://media.licdn.com/dms/image/post.jpg",
+        "all_image_urls": ["https://media.licdn.com/dms/image/post.jpg"],
         "candidate_platform": "LinkedIn",
         "candidate_type": "linkedin_post"
     }]
-    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (True, 0.94))
+    monkeypatch.setattr(web_search, "verify_candidate_face", lambda url, gal: (True, 0.94, 1, "VERIFIED SOCIAL MEDIA FACE MATCH"))
     res = web_search.select_best_result(valid_candidates, enrollment, dummy_gallery)
     assert res["verification_status"] == "VERIFIED SOCIAL MEDIA FACE MATCH"
     assert res["face_match_score"] == 0.94
     assert res["url"] == "https://www.linkedin.com/posts/mohd-asif_building-web3-activity-9999"
+

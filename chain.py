@@ -5,17 +5,25 @@ import config
 
 def connect_to_polygon() -> Web3:
     """Connects to Polygon Amoy RPC and confirms connection. Raises RuntimeError if disconnected."""
-    endpoints = [config.RPC_URL, "https://rpc-amoy.polygon.technology", "https://polygon-amoy.drpc.org", "https://rpc.ankr.com/polygon_amoy"]
+    endpoints = [
+        config.RPC_URL,
+        "https://rpc-amoy.polygon.technology",
+        "https://polygon-amoy.drpc.org",
+        "https://rpc.ankr.com/polygon_amoy",
+        "https://polygon-amoy.blockpi.network/v1/rpc/public",
+        "https://amoy.polygonscan.com"
+    ]
     for ep in endpoints:
-        if not ep:
+        if not ep or not ep.startswith("http"):
             continue
         try:
-            w3 = Web3(Web3.HTTPProvider(ep))
+            w3 = Web3(Web3.HTTPProvider(ep, request_kwargs={"timeout": 10}))
             if w3.is_connected():
                 return w3
         except Exception:
             continue
-    raise RuntimeError(f"Failed to connect to Polygon Amoy RPC: {config.RPC_URL}")
+    raise RuntimeError(f"Failed to connect to Polygon Amoy RPC endpoints")
+
 
 def load_contract(w3: Web3 = None):
     """Loads the deployed ContentRegistry contract instance."""

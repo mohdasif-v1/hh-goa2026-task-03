@@ -64,49 +64,91 @@ def classify_social_url(url: str) -> tuple[str, str]:
 
     return "Web", "generic_webpage"
 
-def run_search(query: dict) -> list[dict]:
-    """Executes live SerpApi call and extracts candidates with image URLs."""
+def run_search(query: dict, enrollment_record: dict = None) -> list[dict]:
+    """Executes live SerpApi call(s) and extracts candidates with all available image URLs."""
     url = "https://serpapi.com/search"
-    resp = requests.get(url, params=query, timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
-
     results = []
+
+    # 1. Google Lens search if query engine is google_lens
     if query.get("engine") == "google_lens":
+        resp = requests.get(url, params=query, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
         raw_matches = data.get("visual_matches", [])
         for item in raw_matches:
             link_url = item.get("link") or item.get("source") or ""
             platform, cand_type = classify_social_url(link_url)
+            
+            img_urls = []
+            for k in ["thumbnail", "image", "original"]:
+                v = item.get(k)
+                if v and isinstance(v, str) and v.startswith("http"):
+                    img_urls.append(v)
+            primary_img = img_urls[0] if img_urls else None
+
             results.append({
                 "url": link_url,
                 "title": item.get("title", "No Title"),
                 "snippet": item.get("snippet") or item.get("source") or "",
                 "source": item.get("source", ""),
-                "image_url": item.get("thumbnail") or item.get("image"),
+                "image_url": primary_img,
+                "all_image_urls": img_urls,
                 "candidate_platform": platform,
-                "candidate_type": cand_type
+                "candidate_type": cand_type,
+                "raw_item": item
             })
-    else:
-        raw_matches = data.get("organic_results", [])
-        for item in raw_matches:
-            link_url = item.get("link", "")
-            img_url = None
-            pagemap = item.get("pagemap", {})
-            if "cse_image" in pagemap and isinstance(pagemap["cse_image"], list) and pagemap["cse_image"]:
-                img_url = pagemap["cse_image"][0].get("src")
-            elif "og_image" in pagemap and isinstance(pagemap["og_image"], list) and pagemap["og_image"]:
-                img_url = pagemap["og_image"][0].get("src")
 
-            platform, cand_type = classify_social_url(link_url)
-            results.append({
-                "url": link_url,
-                "title": item.get("title", "No Title"),
-                "snippet": item.get("snippet", ""),
-                "source": item.get("displayed_link", ""),
-                "image_url": img_url,
-                "candidate_platform": platform,
-                "candidate_type": cand_type
-            })
+    # 2. Organic Google search targeting social sites if enrollment_record provides search terms
+    if enrollment_record and enrollment_record.get("display_name"):
+        disp_name = enrollment_record["display_name"]
+        site_queries = [
+            f'"{disp_name}" site:linkedin.com/posts/',
+            f'"{disp_name}" site:instagram.com/p/',
+            f'"{disp_name}" site:instagram.com/reel/',
+            f'"{disp_name}" site:x.com/*/status/',
+            f'"{disp_name}" site:twitter.com/*/status/'
+        ]
+        for sq in site_queries:
+            org_query = {
+                "engine": "google",
+                "q": sq,
+                "api_key": config.SERPAPI_KEY
+            }
+            try:
+                r = requests.get(url, params=org_query, timeout=10)
+                if r.status_code == 200:
+                    org_data = r.json()
+                    org_matches = org_data.get("organic_results", [])
+                    for item in org_matches:
+                        link_url = item.get("link", "")
+                        platform, cand_type = classify_social_url(link_url)
+                        
+                        img_urls = []
+                        pagemap = item.get("pagemap", {})
+                        if "cse_image" in pagemap and isinstance(pagemap["cse_image"], list):
+                            for ci in pagemap["cse_image"]:
+                                if ci.get("src") and ci.get("src").startswith("http"):
+                                    img_urls.append(ci.get("src"))
+                        if "og_image" in pagemap and isinstance(pagemap["og_image"], list):
+                            for ogi in pagemap["og_image"]:
+                                if ogi.get("src") and ogi.get("src").startswith("http"):
+                                    img_urls.append(ogi.get("src"))
+
+                        primary_img = img_urls[0] if img_urls else None
+                        results.append({
+                            "url": link_url,
+                            "title": item.get("title", "No Title"),
+                            "snippet": item.get("snippet", ""),
+                            "source": item.get("displayed_link", ""),
+                            "image_url": primary_img,
+                            "all_image_urls": img_urls,
+                            "candidate_platform": platform,
+                            "candidate_type": cand_type,
+                            "raw_item": item
+                        })
+            except Exception:
+                pass
+
     return results
 
 def normalize_url(url: str) -> str:
@@ -119,42 +161,46 @@ def normalize_url(url: str) -> str:
             u = u[len(prefix):]
     return u.rstrip("/")
 
-def verify_candidate_face(candidate_image_url: str, gallery: dict) -> tuple[bool, float]:
+def verify_candidate_face(candidate_image_url: str, gallery: dict) -> tuple[bool, float, int, str]:
     """Downloads candidate image and runs embed_face() + match_against_gallery().
-    Returns (is_face_match, similarity_score).
+    Returns (is_face_match, similarity_score, face_count, status_detail).
     """
-    if not candidate_image_url:
-        return False, 0.0
+    if not candidate_image_url or not candidate_image_url.startswith("http"):
+        return False, 0.0, 0, "UNVERIFIED — CANDIDATE IMAGE UNAVAILABLE"
 
     tmp_file = None
     try:
-        resp = requests.get(candidate_image_url, timeout=10)
-        if resp.status_code != 200:
-            return False, 0.0
+        resp = requests.get(candidate_image_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200 or not resp.content:
+            return False, 0.0, 0, "UNVERIFIED — CANDIDATE IMAGE UNAVAILABLE"
 
         fd, tmp_file = tempfile.mkstemp(suffix=".jpg")
         os.write(fd, resp.content)
         os.close(fd)
 
+        # Check face detection
         embedding = face_match.embed_face(tmp_file, enforce_detection=False)
         match_result = face_match.match_against_gallery(embedding, gallery)
 
         if os.path.exists(tmp_file):
             os.remove(tmp_file)
 
-        return match_result.match, match_result.confidence
-    except Exception:
+        if match_result.match:
+            return True, match_result.confidence, 1, "VERIFIED SOCIAL MEDIA FACE MATCH"
+        else:
+            return False, match_result.confidence, 1 if match_result.confidence > 0 else 0, "REJECTED — FACE MISMATCH"
+    except Exception as e:
         if tmp_file and os.path.exists(tmp_file):
             try:
                 os.remove(tmp_file)
             except Exception:
                 pass
-        return False, 0.0
+        return False, 0.0, 0, "UNVERIFIED — CANDIDATE IMAGE UNAVAILABLE"
 
 def select_best_result(results: list[dict], enrollment_record: dict, gallery: dict = None) -> dict:
     """Rigorous candidate selection requiring:
     1. Candidate must have a candidate_image_url that passes independent face verification against the enrolled gallery.
-    2. Primary requirement for Task 3: Candidate URL must be a valid social post (linkedin_post, instagram_post, x_post, or social project post).
+    2. Primary requirement for Task 3: Candidate URL must be a valid social post (linkedin_post, instagram_post, x_post, or other_social).
     """
     iso_timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -186,9 +232,9 @@ def select_best_result(results: list[dict], enrollment_record: dict, gallery: di
     for res in results:
         cand_url_raw = res.get("url") or ""
         cand_url_norm = normalize_url(cand_url_raw)
-        cand_img_url = res.get("image_url")
         cand_type = res.get("candidate_type", "generic_webpage")
         cand_platform = res.get("candidate_platform", "Web")
+        all_imgs = res.get("all_image_urls") or ([res.get("image_url")] if res.get("image_url") else [])
 
         # Ownership match check
         is_owner = False
@@ -203,27 +249,33 @@ def select_best_result(results: list[dict], enrollment_record: dict, gallery: di
         if not is_social_post:
             continue
 
-        if not cand_img_url:
+        if not all_imgs:
             continue
 
-        is_face_match, score = verify_candidate_face(cand_img_url, gallery)
+        for cand_img_url in all_imgs:
+            if not cand_img_url:
+                continue
+            is_face_match, score, fcount, status_det = verify_candidate_face(cand_img_url, gallery)
 
-        if is_face_match:
-            verified_candidate = {
-                "candidate_url": cand_url_raw,
-                "candidate_title": res.get("title", ""),
-                "candidate_platform": cand_platform,
-                "candidate_type": cand_type,
-                "candidate_image_url": cand_img_url,
-                "face_match_score": score,
-                "ownership_match": is_owner,
-                "verification_status": "VERIFIED SOCIAL MEDIA FACE MATCH",
-                "verification_reason": f"Discovered social media post content verified via face match (score: {score:.3f}, type: {cand_type})",
-                "url": cand_url_raw,
-                "title": res.get("title", ""),
-                "snippet": res.get("snippet", ""),
-                "retrieved_at": iso_timestamp
-            }
+            if is_face_match:
+                verified_candidate = {
+                    "candidate_url": cand_url_raw,
+                    "candidate_title": res.get("title", ""),
+                    "candidate_platform": cand_platform,
+                    "candidate_type": cand_type,
+                    "candidate_image_url": cand_img_url,
+                    "face_match_score": score,
+                    "ownership_match": is_owner,
+                    "verification_status": "VERIFIED SOCIAL MEDIA FACE MATCH",
+                    "verification_reason": f"Discovered social media post content verified via face match (score: {score:.3f}, type: {cand_type})",
+                    "url": cand_url_raw,
+                    "title": res.get("title", ""),
+                    "snippet": res.get("snippet", ""),
+                    "retrieved_at": iso_timestamp
+                }
+                break
+
+        if verified_candidate:
             break
 
     if verified_candidate:
@@ -234,7 +286,7 @@ def select_best_result(results: list[dict], enrollment_record: dict, gallery: di
     first_url = first_cand.get("url", "")
     is_first_owner = any(normalize_url(first_url) == p or normalize_url(first_url).startswith(p + "/") for p in normalized_profiles)
 
-    status_str = "UNVERIFIED — NO CANDIDATE IMAGE" if not first_cand.get("image_url") else ("REJECTED — NOT A SOCIAL MEDIA POST" if first_cand.get("candidate_type") in ["profile", "generic_webpage"] else "REJECTED — FACE MISMATCH")
+    status_str = "UNVERIFIED — CANDIDATE IMAGE UNAVAILABLE" if not first_cand.get("image_url") else ("REJECTED — NOT A SOCIAL MEDIA POST" if first_cand.get("candidate_type") in ["profile", "generic_webpage"] else "REJECTED — FACE MISMATCH")
 
     return {
         "candidate_url": first_url,
@@ -251,3 +303,4 @@ def select_best_result(results: list[dict], enrollment_record: dict, gallery: di
         "snippet": "",
         "retrieved_at": iso_timestamp
     }
+
