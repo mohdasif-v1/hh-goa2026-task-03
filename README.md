@@ -224,10 +224,3 @@ The complete Pytest suite validates biometrics, search classification, provenanc
 - **Consented Subject Data**: Reference gallery photographs (`subject_001`) represent consented builder data.
 
 ---
-
-## 12. Submission Summary
-
-- **Task**: **HH Goa 2026 Shortlisting Task 3: Face Identification & Blockchain Verification**
-- **GitHub Repository**: [`https://github.com/mohdasif-v1/hh-goa2026-task-03.git`](https://github.com/mohdasif-v1/hh-goa2026-task-03.git)
-- **Submission Form**: [`https://forms.gle/oZbQGuwiNeHVcHWo8`](https://forms.gle/oZbQGuwiNeHVcHWo8)
-- **Screen Recording**: `[Add final screen recording link here]`
