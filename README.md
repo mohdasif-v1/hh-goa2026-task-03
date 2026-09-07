@@ -5,7 +5,19 @@
 ---
 
 ### Pipeline Sequence
-$$\text{Face Scan / Input Image} \longrightarrow \text{Face Detection (MTCNN)} \longrightarrow \text{ArcFace Embedding} \longrightarrow \text{Reverse-Image Search (Google Lens)} \longrightarrow \text{Social Media Discovery} \longrightarrow \text{Provenance & Face Match} \longrightarrow \text{SHA-256 Fingerprint} \longrightarrow \text{Polygon Amoy Registration} \longrightarrow \text{On-Chain Proof} \longrightarrow \text{Tamper Test}$$
+
+```mermaid
+flowchart LR
+    A[Face Scan / Input Image] --> B[Face Detection MTCNN]
+    B --> C[ArcFace Embedding]
+    C --> D[Reverse-Image Search Google Lens]
+    D --> E[Social Media Discovery]
+    E --> F[Provenance and Face Match]
+    F --> G[SHA-256 Fingerprint]
+    G --> H[Polygon Amoy Registration]
+    H --> I[On-Chain Proof]
+    I --> J[Tamper Test]
+```
 
 > **Note on Interface**: As permitted by the official task prompt, **no website is required or included**. The project is implemented as a complete, automated end-to-end command-line application (`app.py`).
 
@@ -137,7 +149,7 @@ graph TD
 - **Enrolled Reference Gallery**: `data/gallery/subject_001/` containing enrolled subject photos (`photo4.png`, `photo5.png`).
 - **Face Quality Gate**: Filters candidates requiring width $\ge 60\text{px}$, height $\ge 60\text{px}$, and Laplacian variance $\ge 20.0$.
 - **Calibrated Operating Threshold**:
-  $$\text{FACE\_MATCH\_THRESHOLD} = 0.600$$
+  `FACE_MATCH_THRESHOLD = 0.600`
 
 > **Calibrated Operating Threshold Disclaimer**: The `0.600` cosine-distance threshold is a calibrated operating threshold for the evaluated benchmark and operating regime (clear, unoccluded frontal or moderate-pose $\le 45^\circ$ yaw photos under standard lighting). It is not claimed to be a universal threshold or a production-grade open-web identity resolution system.
 
@@ -234,7 +246,7 @@ PYTHONPATH=. ./venv/bin/pytest tests/ -q
 ### Pytest Execution Summary
 ```text
 ................................                   [100%]
-32 passed in 355.90s (0:05:55)
+32 passed in 340.50s (0:05:40)
 ```
 - **Passed Tests**: 32 / 32 (100%)
 
@@ -332,5 +344,3 @@ hh-goa-blockchain/
 - **GitHub Repository**: [`https://github.com/mohdasif-v1/hh-goa2026-task-03.git`](https://github.com/mohdasif-v1/hh-goa2026-task-03.git)
 - **Submission Form**: [`https://forms.gle/oZbQGuwiNeHVcHWo8`](https://forms.gle/oZbQGuwiNeHVcHWo8)
 - **Screen Recording**: `[Add final screen recording link here]`
-
-
