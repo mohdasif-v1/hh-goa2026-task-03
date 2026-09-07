@@ -1,5 +1,6 @@
 import os
 import sys
+import config
 
 def configure_environment(verbose: bool = False):
     """Configures environment variables to suppress TensorFlow/absl/CUDA C++ logging startup noise."""
@@ -17,42 +18,50 @@ def print_header(verbose: bool = False):
 
 def print_step_1_face(match_result: dict, image_path: str):
     print("[1/5] Face identification")
-    print(f"      Input       : {image_path}")
+    print(f"      Input           : {image_path}")
     if match_result.get("match"):
-        print("      Face        : Detected")
-        print(f"      Subject     : {match_result.get('matched_id')}")
-        print(f"      Similarity  : {match_result.get('confidence'):.3f}")
-        print(f"      Threshold   : {match_result.get('threshold_used'):.3f}")
-        print("      Status      : MATCH\n")
+        print("      Face            : Detected")
+        print(f"      Subject         : {match_result.get('matched_id')}")
+        print(f"      Metric          : Cosine distance (ArcFace + MTCNN)")
+        print(f"      Distance        : {match_result.get('cosine_distance', match_result.get('confidence', 0.0)):.4f}")
+        print(f"      Threshold       : < {match_result.get('threshold_used'):.3f}")
+        print("      Status          : MATCH\n")
     else:
-        print("      Face        : Not Detected or Low Similarity")
-        print(f"      Similarity  : {match_result.get('confidence'):.3f}")
-        print(f"      Threshold   : {match_result.get('threshold_used'):.3f}")
-        print("      Status      : NO MATCH\n")
+        print("      Face            : Detected" if match_result.get("face_count", 0) > 0 else "      Face            : Not Detected")
+        print(f"      Metric          : Cosine distance (ArcFace + MTCNN)")
+        print(f"      Distance        : {match_result.get('cosine_distance', match_result.get('confidence', 1.0)):.4f}")
+        print(f"      Threshold       : < {match_result.get('threshold_used'):.3f}")
+        print("      Status          : NO MATCH\n")
 
 def print_step_2_search(candidate_count: int, selected_result: dict, engine_name: str):
-    print("[2/5] Reverse image search")
+    print("[2/5] Social post verification")
     print(f"      Engine      : {engine_name}")
     print(f"      Candidates  : {candidate_count}\n")
     
     status_str = selected_result.get("verification_status", "UNVERIFIED")
     if status_str.startswith("VERIFIED"):
         print("      Candidate 1")
-        print(f"      Platform    : {selected_result.get('candidate_platform', 'Web')}")
-        print(f"      Type        : {selected_result.get('candidate_type', 'Post')}")
-        print(f"      Title       : {selected_result.get('candidate_title')}")
-        print(f"      URL         : {selected_result.get('candidate_url')}")
-        print(f"      Face score  : {selected_result.get('face_match_score', 0.0):.3f}")
-        print(f"      Status      : {status_str}\n")
+        print(f"      Platform          : {selected_result.get('candidate_platform', 'Web')}")
+        print(f"      Post URL          : {selected_result.get('candidate_url')}")
+        print(f"      Post image URL    : {selected_result.get('candidate_image_url')}")
+        print(f"      Image source      : {selected_result.get('image_source_type', 'none')}")
+        print(f"      Belongs post      : {selected_result.get('image_belongs_to_post', True)}")
+        print(f"      Face count        : {selected_result.get('face_count', 1)}")
+        print(f"      Matched face idx  : {selected_result.get('matched_face_index')}")
+        print(f"      Metric            : Cosine distance (ArcFace + MTCNN)")
+        print(f"      Distance          : {selected_result.get('cosine_distance', selected_result.get('face_match_score', 0.0)):.4f}")
+        print(f"      Threshold         : < {config.FACE_MATCH_THRESHOLD:.3f}")
+        print(f"      Status            : {status_str}\n")
     else:
-        print(f"      Verified    : 0")
-        print(f"      Status      : {status_str} ({selected_result.get('verification_reason')})\n")
+        print(f"      Verified          : 0")
+        print(f"      Status            : {status_str} ({selected_result.get('verification_reason')})\n")
 
 def print_no_match_result():
     print("RESULT")
     print("------")
-    print("NO VERIFIED SOCIAL MEDIA MATCH FOUND\n")
+    print("NO VERIFIED SOCIAL MEDIA POST FOUND\n")
     print("Blockchain registration skipped.\n")
+
 
 def print_step_3_fingerprint(sha256_hash: str):
     print("[3/5] Evidence fingerprint")
