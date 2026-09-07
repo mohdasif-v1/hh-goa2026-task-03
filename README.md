@@ -18,23 +18,19 @@
 
 ## Pipeline
 
+The end-to-end data flow moves sequentially from input image scanning to on-chain Polygon Amoy registration and tamper verification.
+
 ```mermaid
 flowchart LR
-    A[Input Face Image] --> B[MTCNN Detection]
-    B --> C[ArcFace Embedding]
-    C --> D[Subject Identification]
-    D --> E[Google Lens Search]
-    E --> F[Candidate Social Posts]
-    F --> G[Post Media Extraction]
-    G --> H[Provenance Validation]
-    H --> I[Candidate Face Verification]
-    I --> J[Verified Social Post]
-    J --> K[Canonical Evidence]
-    K --> L[SHA-256 Fingerprint]
-    L --> M[Polygon Amoy]
-    M --> N[ContentRegistry]
-    N --> O[On-Chain Verification]
-    O --> P[Tamper Detection]
+    A["Face Image"] --> B["Identify Subject"]
+    B --> C["Reverse Image Search"]
+    C --> D["Discover Social Post"]
+    D --> E["Verify Post Media"]
+    E --> F["Verify Face"]
+    F --> G["Create SHA-256 Fingerprint"]
+    G --> H["Register on Polygon Amoy"]
+    H --> I["Verify On-Chain"]
+    I --> J["Tamper Check"]
 ```
 
 > **Note on Interface**: As permitted by the official task prompt, **no website is required or included**. The project is implemented as a complete, automated end-to-end command-line application (`app.py`).
@@ -75,30 +71,73 @@ flowchart LR
 
 ## Architecture
 
+At a high level, the system separates identity, discovery, verification, evidence, and blockchain concerns. The key design decision is that a discovered social-media image is not accepted solely because reverse-image search found it; its post provenance and face match are independently checked.
+
 ```mermaid
-flowchart TD
-    A[Input Layer] --> B[Face Recognition]
-    B --> C[Search and Discovery]
-    C --> D[Post Provenance]
-    D --> E[Evidence Fingerprinting]
-    E --> F[Blockchain Registry]
-    F --> G[Verification Output]
+flowchart LR
+    A["INPUT<br/>Face Image"] --> B
+
+    subgraph B["IDENTITY"]
+        B1["MTCNN<br/>Face Detection"]
+        B2["ArcFace<br/>Embedding"]
+        B3["Subject Match"]
+        B1 --> B2 --> B3
+    end
+
+    B --> C
+
+    subgraph C["DISCOVERY"]
+        C1["Google Lens"]
+        C2["Candidate URLs"]
+        C3["Social Post Detection"]
+        C1 --> C2 --> C3
+    end
+
+    C --> D
+
+    subgraph D["VERIFICATION"]
+        D1["Post Media Extraction"]
+        D2["Provenance Check"]
+        D3["Candidate Face Match"]
+        D1 --> D2 --> D3
+    end
+
+    D --> E
+
+    subgraph E["EVIDENCE"]
+        E1["Canonical Evidence"]
+        E2["SHA-256 Fingerprint"]
+        E1 --> E2
+    end
+
+    E --> F
+
+    subgraph F["BLOCKCHAIN"]
+        F1["Polygon Amoy"]
+        F2["ContentRegistry"]
+        F3["On-Chain Verification"]
+        F1 --> F2 --> F3
+    end
+
+    F --> G["RESULT<br/>Verified or Tampering Detected"]
 ```
 
 ---
 
 ## Tamper Detection Flow
 
+The diagram below highlights the structural contrast between authentic evidence registered on-chain and modified evidence that triggers tamper detection.
+
 ```mermaid
 flowchart LR
-    A[Original Evidence] --> B[SHA-256 Hash]
-    B --> C[Blockchain Record]
-    C --> D[Verified]
+    A["Original Evidence"] --> B["SHA-256 Hash"]
+    B --> C["On-Chain Record"]
+    C --> D["VERIFIED"]
 
-    E[Modified Evidence] --> F[Different SHA-256 Hash]
-    F --> G[Blockchain Lookup]
-    G --> H[Not Found]
-    H --> I[Tampering Detected]
+    E["Modified Evidence"] --> F["Different SHA-256 Hash"]
+    F --> G["Blockchain Lookup"]
+    G --> H["NOT FOUND"]
+    H --> I["TAMPERING DETECTED"]
 ```
 
 ---
